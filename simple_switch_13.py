@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+#Thư viện này là để Ryu chạy như 1 app
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
@@ -24,13 +25,17 @@ from ryu.lib.packet import ether_types
 
 
 class SimpleSwitch13(app_manager.RyuApp):
+    #Set version 1.3 Open Flow
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
         #Khởi tạo Class, tham số ở đây là gì?
+        #Handshake giữa OF Switch và Controller, nhưng mà trong Ryu nó làm rồi nên
+        #xài 2 dòng này là dc
         super(SimpleSwitch13, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
 
+    #Thêm những dòng còn thiếu vào table
     # set_ev_cls listen to specific events.
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)  # listen to OpenFlow Switch Features Event
     def switch_features_handler(self, ev):
@@ -66,6 +71,7 @@ class SimpleSwitch13(app_manager.RyuApp):
                                     match=match, instructions=inst)  # modify flow without buffer_id
         datapath.send_msg(mod)  # send information about modified flow to destination
 
+    #Nhận và xử lý các packet in chưa rõ destination
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
         # If you hit this you might want to increase
