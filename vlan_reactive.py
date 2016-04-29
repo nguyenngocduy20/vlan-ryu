@@ -82,10 +82,6 @@ class VLAN_Reactive(app_manager.RyuApp):
         self.mac_to_port[dpid][src] = in_port
 
 
-        # learn a mac address to avoid FLOOD next time.
-        self.mac_to_port[dpid][src] = in_port
-
-
         #----------------- Duyet VLAN roi moi add flow --------------
         #------------------------------------------------------------
         # Code cung cho cac port VLAN
@@ -95,30 +91,30 @@ class VLAN_Reactive(app_manager.RyuApp):
         vlan_1 = ({1,1}, {1,3}, {2,2})
         vlan_2 = ({1,2}, {2,1}, {3,1})
 
-        i = 1
         dpid_dst = 1
+        dpid_src = dpid
         for i in (1, 2, 3):
             # Duyet 3 con switch
             if dst in self.mac_to_port[i]:
                 dpid_dst = i
                 out_port = self.mac_to_port[i][dst]
 
-        dpid_src = dpid
         # dpid_dst = ?
         # DPID Source
-        tmp1 = {dpid_src, src}
+        # DPID cua source va MAC cua source
+        tmp1 = {dpid_src, in_port}
         # DPID Dest
-        tmp2 = {dpid_dst, dst}
+        tmp2 = {dpid_dst, out_port}
 
         if tmp1 in vlan_2:
             flag = 2
 
+        # Mac dinh la khong forward!!
         forward = False
         if flag == 1:
             if tmp2 in vlan_1:
                 forward = True
-        else:
-            if tmp2 in vlan_2:
+        elif tmp2 in vlan_2:
                 forward = True
 
         if forward == False:
@@ -128,16 +124,18 @@ class VLAN_Reactive(app_manager.RyuApp):
         print "VLAN is matched"
 
 
+
+        # out_port = self.mac_to_port[dpid][dst]
+        actions = [parser.OFPActionOutput(out_port)]
+
+        #----Ma gia----
         # if packet in my_flow_table
         #           forward
         # else
         #           add in flow table
         #           forward
-        out_port = self.mac_to_port[dpid][dst]
-        actions = [parser.OFPActionOutput(out_port)]
-
         if dst in self.mac_to_port[dpid]:
-            out_port = self.mac_to_port[dpid][dst]
+            # out_port = self.mac_to_port[dpid][dst]
             out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id, in_port=msg.match['in_port'],
                                           actions=actions)
             datapath.send_msg(out)
@@ -146,7 +144,7 @@ class VLAN_Reactive(app_manager.RyuApp):
             #out_port = ofproto.OFPP_FLOOD
 
 
-        actions = [parser.OFPActionOutput(out_port)]
+        # actions = [parser.OFPActionOutput(out_port)]
         # install a flow to avoid packet_in next time
         match = parser.OFPMatch(in_port=in_port, eth_dst=dst)
         # verify if we have a valid buffer_id, if yes avoid to send both
