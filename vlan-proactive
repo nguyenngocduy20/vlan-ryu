@@ -57,7 +57,6 @@ from ryu.controller import dpset, ofp_event
 from ryu.controller.handler import set_ev_cls
 from ryu.controller.handler import MAIN_DISPATCHER, CONFIG_DISPATCHER
 from ryu.lib.mac import haddr_to_str
-
 import logging
 import struct
 
@@ -71,9 +70,15 @@ class VLan_Proactive(app_manager.RyuApp):
     _CONTEXTS = {'dpset': dpset.DPSet}
     # Set version 1.3 Open Flow
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
-    value_pair = {'tenda1'    :    ['s1-eth1', 's1-eth3', 's2-eth2'],
-                  'tenda2'    :    ['s1-eth2', 's2-eth1', 's3-eth1'],
-                  'trunk'    :    ['s1-eth4', 's2-eth3', 's3-eth2']}
+    # switch = { port_no:vlan ...}
+    # vlan 3 = trunk
+    switch1 = {1    :   1, 2   :   2, 3    :   1, 4   :   3}
+    switch2 = {1    :   2, 2   :   1, 3    :   3}
+    switch3 = {1    :   2, 2   :   3}
+
+    # value_pair = {'tenda1'    :    ['s1-eth1', 's1-eth3', 's2-eth2'],
+    #               'tenda2'    :    ['s1-eth2', 's2-eth1', 's3-eth1'],
+    #               'trunk'    :    ['s1-eth4', 's2-eth3', 's3-eth2']}
             
     def __init__(self, *_args, **_kvargs):
        super(VLan_Proactive, self).__init__(*_args, **_kvargs)
@@ -93,7 +98,7 @@ class VLan_Proactive(app_manager.RyuApp):
             flags=0, match=match, instructions=inst)
         
         datapath.send_msg(mod)
-        
+
     def build_match(self, datapath, port):
         match = datapath.ofproto_parser.OFPMatch()
         match.set_in_port(port)
@@ -114,14 +119,7 @@ class VLan_Proactive(app_manager.RyuApp):
         actions = [datapath.ofproto_parser.OFPActionPushVlan(VLAN_TAG_802_1Q),
                    datapath.ofproto_parser.OFPActionSetField(field)]
         self._add_flow(datapath, match, actions)
-    
 
-    def tag_customer_vlan(self, labels, vlan_id, datapath):
-         port = self._get_port_number(labels, datapath)
-         if port is not None:
-            logger.debug("--- Tagging port=> %s with VLAN ID => %s with Label => %s",
-                         port.port_no, vlan_id, port.name)
-            self.tag_vlan(port.port_no, vlan_id, datapath)    
     
     '''
     TRUNK
@@ -133,46 +131,42 @@ class VLan_Proactive(app_manager.RyuApp):
                 
         actions = [datapath.ofproto_parser.OFPActionPushVlan(BRIDGE_TAG_802_1AD)]
         self._add_flow(datapath, match, actions)
-    
-    def tag_trunk_vlan(self, labels, trunk_id, datapath):
-        port = self._get_port_number(labels, datapath)
-        if port is not None:
-            logger.debug("--- Tagging port=> %s with TRUNK_ID => %s with Label => %s",
-                         port.port_no, trunk_id, port.name)
-            self.tag_trunk(port.port_no, trunk_id, datapath)
 
-    #########################################################
-    #Get port number. Ex: Port ID of port H1 ?
-    def _get_port_number(self, labels, datapath):
-
-        def is_switch_label(label):
-            #for k, port in datapath.ports.items():
-            for port in datapath.ports.items():
-                if label in port.name:
-                    return port
-            return None
-    
-        for label in labels:
-            port = is_switch_label(label) 
-            if port is not None:
-                return port 
-        return None
     ##########################################################
     def install_vpn_flow(self, datapath):
-        # Static value of customer and aggregated switch ports
-        # Note this value is use purposely for test only
-        trunk_id = 1
-        for key, labels in reversed(self.value_pair.items()):
-            if 'tenda1' in key:
-                vlan_id = 1
-                self.tag_customer_vlan(labels, vlan_id, datapath)
-            elif 'tenda2' in key:
-                vlan_id = 2
-                self.tag_customer_vlan(labels, vlan_id, datapath)
-            elif 'trunk' in key:
-                trunk_id += 1
-                self.tag_trunk_vlan(labels, trunk_id, datapath)
-
+        # Static value switch ports
+        #
+        trunk_id = 3
+        print "----------Switch ID: "
+        print datapath.id
+        if datapath.id is 1:
+            for port_no, vlan_id in (self.switch1.items()):
+                print "port_no: "
+                print port_no
+                print "vlan id: "
+                print vlan_id
+                if vlan_id is 3:
+                   self.tag_trunk(port_no, trunk_id, datapath)
+                else: self.tag_vlan(port_no, vlan_id, datapath)
+        elif datapath.id is 2:
+            for vlan_id, port_no in (self.switch2.items()):
+                print "port_no: "
+                print port_no
+                print "vlan id: "
+                print vlan_id
+                if vlan_id is 3:
+                    self.tag_trunk(port_no, trunk_id, datapath)
+                else:
+                    self.tag_vlan(port_no, vlan_id, datapath)
+        else:
+            for vlan_id, port_no in (self.switch3.items()):
+                print "port_no: "
+                print port_no
+                print "vlan id: "
+                print vlan_id
+                if vlan_id is 3:
+                    self.tag_trunk(port_no, trunk_id, datapath)
+                else: self.tag_vlan(port_no, vlan_id, datapath)
         logger.info("")
     
     '''
@@ -183,11 +177,10 @@ class VLan_Proactive(app_manager.RyuApp):
     #@set_ev_cls(dpset.EventDP, CONFIG_DISPATCHER)
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def handler_datapath(self, event):
-        #if event.enter:
+    #    if event.enter:
         logger.info("++++++ Installing VLAN ++++++")
-             #logger.info(event.dp.ports)
-        #self.install_vpn_flow(event.msg.datapath)
-        self.install_vpn_flow(event.msg.datapath)
+        #logger.info(event.dp.ports)
+        self.install_vpn_flow(event.dp)
 
     # @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     # def packet_in_handler(self, ev):
